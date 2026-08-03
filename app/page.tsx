@@ -31,8 +31,11 @@ function fileToDataUrl(file: File): Promise<string> {
 export default function Home() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [place, setPlace] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [relatedKeywords, setRelatedKeywords] = useState("");
   const [notes, setNotes] = useState("");
   const [tone, setTone] = useState<ToneKey>("review");
+  const [showTips, setShowTips] = useState(false);
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -80,8 +83,8 @@ export default function Home() {
 
   const generate = async () => {
     if (loading) return;
-    if (!place.trim() && photos.length === 0) {
-      setError("장소 이름이나 사진 중 하나 이상은 입력해 주세요.");
+    if (!place.trim() && !keyword.trim() && photos.length === 0) {
+      setError("장소 이름, 핵심 키워드, 사진 중 하나 이상은 입력해 주세요.");
       return;
     }
     setError("");
@@ -93,6 +96,8 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           place,
+          keyword,
+          relatedKeywords,
           notes,
           tone,
           images: photos.map((p) => ({ dataUrl: p.dataUrl })),
@@ -133,8 +138,11 @@ export default function Home() {
   return (
     <div className="container">
       <header className="hero">
-        <h1>AI 블로그 에디터</h1>
-        <p>사진과 장소를 넣으면 AI가 알아서 블로그 글을 작성해 줍니다.</p>
+        <h1>네이버 블로그 AI 에디터</h1>
+        <p>
+          사진·장소·키워드를 넣으면 네이버 검색 상위노출에 맞춰 튜닝된 블로그 글을
+          작성해 줍니다.
+        </p>
       </header>
 
       <div className="grid">
@@ -149,6 +157,29 @@ export default function Home() {
               placeholder="예: 성수동 ○○카페, 제주 애월 바닷가"
               value={place}
               onChange={(e) => setPlace(e.target.value)}
+            />
+          </label>
+
+          <label className="field">
+            <span className="label-text">핵심 키워드 (검색 상위노출용)</span>
+            <input
+              type="text"
+              placeholder="예: 성수동 브런치카페, 제주 애월 가볼만한곳"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            <p className="hint">
+              실제로 검색될 법한 말로. 제목 앞쪽 + 본문에 자연스럽게 반복됩니다.
+            </p>
+          </label>
+
+          <label className="field">
+            <span className="label-text">연관 키워드 (선택)</span>
+            <input
+              type="text"
+              placeholder="쉼표로 구분 · 예: 아기랑, 주차, 웨이팅, 디저트"
+              value={relatedKeywords}
+              onChange={(e) => setRelatedKeywords(e.target.value)}
             />
           </label>
 
@@ -232,6 +263,45 @@ export default function Home() {
           </button>
 
           {error && <p className="error">{error}</p>}
+
+          <div className="tips">
+            <button
+              type="button"
+              className="tips-toggle"
+              onClick={() => setShowTips((v) => !v)}
+              aria-expanded={showTips}
+            >
+              {showTips ? "▾" : "▸"} 네이버 상위노출 팁 (앱이 대신 못 하는 부분)
+            </button>
+            {showTips && (
+              <ul className="tips-list">
+                <li>
+                  <b>글 자체는 튜닝되어 있습니다.</b> 실제 경험 톤, 구체적 수치,
+                  소제목·요약 구조, 키워드 배치, 붙여넣기 되는 형식으로 생성됩니다.
+                </li>
+                <li>
+                  <b>한 주제로 꾸준히.</b> 네이버 C-Rank는 특정 분야 글을 오래 쌓은
+                  블로그를 신뢰합니다. 잡블로그보다 한 카테고리 집중이 유리합니다.
+                </li>
+                <li>
+                  <b>내 사진을 쓰세요.</b> 다른 곳에서 가져온·무료 스톡 이미지는
+                  감점 요인. 직접 찍은 사진 6~13장이 좋습니다.
+                </li>
+                <li>
+                  <b>자리표시자 [ ]를 채우세요.</b> 가격·주소·영업시간 등은 지어내지
+                  않고 비워 둡니다. 발행 전 실제 값으로 채우면 신뢰도가 올라갑니다.
+                </li>
+                <li>
+                  <b>발행 후 바로 이탈 방지.</b> 밀도 있게 쓴 글이라야 체류시간(권장
+                  1분 30초+)이 확보되고 품질 점수가 오릅니다. 채우기 문장은 지우세요.
+                </li>
+                <li>
+                  <b>수정하면 재크롤링.</b> 저품질로 밀린 글도 구조·팩트를 고쳐 다시
+                  저장하면 1~2주 뒤 재평가됩니다.
+                </li>
+              </ul>
+            )}
+          </div>
         </section>
 
         {/* 결과 영역 */}
@@ -255,8 +325,8 @@ export default function Home() {
           ) : (
             <div className="empty-state">
               {loading
-                ? "AI가 사진을 분석하고 글을 쓰는 중입니다…"
-                : "왼쪽에 사진과 장소를 입력하고 작성 버튼을 눌러보세요.\n생성된 글은 여기서 바로 수정할 수 있습니다."}
+                ? "AI가 사진을 분석하고 상위노출용 글을 쓰는 중입니다…"
+                : "왼쪽에 사진·장소·핵심 키워드를 입력하고 작성 버튼을 눌러보세요.\n생성된 글은 네이버에 바로 붙여넣을 수 있고, 여기서 수정도 됩니다."}
             </div>
           )}
         </section>

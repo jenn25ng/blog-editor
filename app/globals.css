@@ -244,3 +244,37 @@ button.primary:disabled {
   color: var(--muted);
   font-weight: 400;
 }
+
+.tips {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.tips-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tips-list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.tips-list li {
+  margin-bottom: 8px;
+}
+
+.tips-list b {
+  color: var(--text);
+  font-weight: 600;
+}
