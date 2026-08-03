@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 type ToneKey = "review" | "travel" | "casual";
 
@@ -28,6 +28,145 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+type SeoStatus = "ok" | "warn" | "info";
+
+interface SeoMetric {
+  label: string;
+  value: string;
+  status: SeoStatus;
+  hint?: string;
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+  if (!needle) return 0;
+  let count = 0;
+  let idx = haystack.indexOf(needle);
+  while (idx !== -1) {
+    count++;
+    idx = haystack.indexOf(needle, idx + needle.length);
+  }
+  return count;
+}
+
+// 생성된 글을 네이버 상위노출 기준으로 실시간 점검한다.
+function analyzeSeo(
+  text: string,
+  keyword: string,
+  related: string,
+): SeoMetric[] {
+  const metrics: SeoMetric[] = [];
+  const body = text.trim();
+  if (!body) return metrics;
+
+  const kw = keyword.trim();
+  const title = (body.split("\n").find((l) => l.trim().length > 0) ?? "").trim();
+
+  // 제목 길이
+  metrics.push({
+    label: "제목 길이",
+    value: `${title.length}자`,
+    status: title.length >= 15 && title.length <= 25 ? "ok" : "warn",
+    hint:
+      title.length < 15
+        ? "15자 이상 권장"
+        : title.length > 25
+          ? "25자 이하 권장"
+          : "적정(15~25자)",
+  });
+
+  // 제목 키워드 앞배치
+  if (kw) {
+    const pos = title.indexOf(kw);
+    const front = pos !== -1 && pos <= Math.floor(title.length * 0.4);
+    metrics.push({
+      label: "제목 키워드",
+      value: pos === -1 ? "없음" : front ? "앞배치 ✓" : "뒤쪽",
+      status: pos === -1 || !front ? "warn" : "ok",
+      hint:
+        pos === -1
+          ? "제목에 핵심 키워드를 넣으세요"
+          : front
+            ? "적정"
+            : "키워드를 제목 앞쪽으로",
+    });
+  }
+
+  // 글자 수 (공백 제외)
+  const noSpace = body.replace(/\s/g, "").length;
+  metrics.push({
+    label: "글자 수(공백 제외)",
+    value: `${noSpace}자`,
+    status: noSpace >= 800 ? "ok" : "warn",
+    hint: noSpace >= 800 ? "충분" : "800자↑면 체류시간에 유리",
+  });
+
+  // 핵심 키워드 반복
+  if (kw) {
+    const n = countOccurrences(body, kw);
+    metrics.push({
+      label: "핵심 키워드 반복",
+      value: `${n}회`,
+      status: n < 3 || n > 8 ? "warn" : "ok",
+      hint:
+        n < 3 ? "3회↑ 자연스럽게" : n > 8 ? "과다 — 스팸 위험" : "적정(3~8회)",
+    });
+  } else {
+    metrics.push({
+      label: "핵심 키워드",
+      value: "미입력",
+      status: "info",
+      hint: "키워드를 넣으면 반복 횟수를 점검합니다",
+    });
+  }
+
+  // 연관 키워드 반영
+  const relList = related
+    .split(/[,\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (relList.length) {
+    const hit = relList.filter((r) => body.includes(r)).length;
+    metrics.push({
+      label: "연관 키워드 반영",
+      value: `${hit}/${relList.length}`,
+      status: hit === relList.length ? "ok" : "warn",
+      hint: hit === relList.length ? "모두 포함" : "빠진 키워드를 본문에",
+    });
+  }
+
+  // 해시태그
+  const tags = (body.match(/#[^\s#]+/g) ?? []).length;
+  metrics.push({
+    label: "해시태그",
+    value: `${tags}개`,
+    status: tags >= 8 && tags <= 15 ? "ok" : "warn",
+    hint: tags < 8 ? "8~12개 권장" : tags > 15 ? "너무 많음" : "적정",
+  });
+
+  // 사진 위치 표시
+  const photoMarks = (body.match(/\[사진[^\]]*\]/g) ?? []).length;
+  metrics.push({
+    label: "사진 위치",
+    value: `${photoMarks}곳`,
+    status: photoMarks > 0 ? "ok" : "info",
+    hint: photoMarks > 0 ? "그 자리에 사진 삽입" : "",
+  });
+
+  // 채워야 할 자리표시자 ([사진] 제외)
+  const brackets = body.match(/\[[^\]]+\]/g) ?? [];
+  const placeholders = brackets.filter((b) => !b.startsWith("[사진")).length;
+  if (placeholders > 0) {
+    metrics.push({
+      label: "채울 자리표시자",
+      value: `${placeholders}개`,
+      status: "warn",
+      hint: "발행 전 실제 값으로 채우세요",
+    });
+  }
+
+  return metrics;
+}
+
 export default function Home() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [place, setPlace] = useState("");
@@ -42,6 +181,11 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const seo = useMemo(
+    () => analyzeSeo(result, keyword, relatedKeywords),
+    [result, keyword, relatedKeywords],
+  );
 
   const addFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -316,12 +460,34 @@ export default function Home() {
           </div>
 
           {result ? (
-            <textarea
-              className="result-area"
-              value={result}
-              onChange={(e) => setResult(e.target.value)}
-              spellCheck={false}
-            />
+            <>
+              <textarea
+                className="result-area"
+                value={result}
+                onChange={(e) => setResult(e.target.value)}
+                spellCheck={false}
+              />
+              {seo.length > 0 && (
+                <div className="seo-panel">
+                  <div className="seo-head">
+                    SEO 점검
+                    <span className="seo-note">글을 수정하면 실시간 반영</span>
+                  </div>
+                  <div className="seo-grid">
+                    {seo.map((m) => (
+                      <div className={`seo-item ${m.status}`} key={m.label}>
+                        <span className="seo-dot" aria-hidden />
+                        <div className="seo-body">
+                          <span className="seo-label">{m.label}</span>
+                          <span className="seo-value">{m.value}</span>
+                          {m.hint && <span className="seo-hint">{m.hint}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="empty-state">
               {loading

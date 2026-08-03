@@ -278,3 +278,87 @@ button.primary:disabled {
   color: var(--text);
   font-weight: 600;
 }
+
+.seo-panel {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.seo-head {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seo-note {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.seo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.seo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fcfbf9;
+}
+
+.seo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+  background: var(--muted);
+}
+
+.seo-item.ok .seo-dot {
+  background: #2e7d46;
+}
+
+.seo-item.warn .seo-dot {
+  background: #d08a1d;
+}
+
+.seo-item.info .seo-dot {
+  background: #9a958c;
+}
+
+.seo-body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+}
+
+.seo-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.seo-value {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.seo-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.seo-item.warn .seo-hint {
+  color: #b0740f;
+}
