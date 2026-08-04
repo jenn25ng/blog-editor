@@ -48,6 +48,46 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
+const TITLE_MARKER = "▼ 제목 후보";
+
+// 생성된 글을 본문과 "제목 후보" 블록으로 분리한다.
+function splitPostAndCandidates(text: string): {
+  post: string;
+  candidates: string[];
+} {
+  const markerIdx = text.indexOf(TITLE_MARKER);
+  if (markerIdx === -1) return { post: text, candidates: [] };
+
+  // 마커 바로 앞에 붙은 구분선(———, ---, ─── 등)은 본문에서 떼어낸다.
+  const before = text.slice(0, markerIdx);
+  const sep = before.match(/\n*[—\-─]{2,}\s*$/);
+  const post = text.slice(0, markerIdx - (sep ? sep[0].length : 0)).replace(/\s+$/, "");
+
+  const after = text.slice(markerIdx + TITLE_MARKER.length);
+  const candidates = after
+    .split("\n")
+    // 앞의 번호(1. / 1)) · 불릿 · 따옴표를 제거
+    .map((l) =>
+      l
+        .replace(/^\s*\d+[.)]\s*/, "")
+        .replace(/^\s*[-•▷▶*]\s*/, "")
+        .trim()
+        .replace(/^["']|["']$/g, "")
+        .trim(),
+    )
+    .filter((l) => l.length > 0 && !l.startsWith("("));
+
+  return { post, candidates };
+}
+
+function buildCandidateBlock(candidates: string[]): string {
+  return [
+    "———",
+    `${TITLE_MARKER} (골라서 교체하세요)`,
+    ...candidates.map((c, i) => `${i + 1}. ${c}`),
+  ].join("\n");
+}
+
 // 생성된 글을 네이버 상위노출 기준으로 실시간 점검한다.
 function analyzeSeo(
   text: string,
@@ -182,10 +222,26 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const parsed = useMemo(() => splitPostAndCandidates(result), [result]);
   const seo = useMemo(
-    () => analyzeSeo(result, keyword, relatedKeywords),
-    [result, keyword, relatedKeywords],
+    () => analyzeSeo(parsed.post, keyword, relatedKeywords),
+    [parsed.post, keyword, relatedKeywords],
   );
+
+  // 후보 제목을 현재 제목과 맞바꾼다. 기존 제목은 후보 목록으로 되돌려 둔다.
+  const swapTitle = (candidate: string) => {
+    const { post, candidates } = parsed;
+    const lines = post.split("\n");
+    const firstIdx = lines.findIndex((l) => l.trim().length > 0);
+    const oldTitle = firstIdx >= 0 ? lines[firstIdx].trim() : "";
+    if (firstIdx >= 0) lines[firstIdx] = candidate;
+
+    const nextCandidates = candidates
+      .map((c) => (c === candidate ? oldTitle : c))
+      .filter((c) => c.length > 0);
+
+    setResult(`${lines.join("\n")}\n\n${buildCandidateBlock(nextCandidates)}`);
+  };
 
   const addFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -467,6 +523,27 @@ export default function Home() {
                 onChange={(e) => setResult(e.target.value)}
                 spellCheck={false}
               />
+              {parsed.candidates.length > 0 && (
+                <div className="title-swap">
+                  <div className="title-swap-head">
+                    제목 후보
+                    <span className="seo-note">클릭하면 맨 위 제목과 교체됩니다</span>
+                  </div>
+                  <div className="title-swap-list">
+                    {parsed.candidates.map((c, i) => (
+                      <button
+                        type="button"
+                        className="title-swap-btn"
+                        key={`${c}-${i}`}
+                        onClick={() => swapTitle(c)}
+                        title="이 제목으로 교체"
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {seo.length > 0 && (
                 <div className="seo-panel">
                   <div className="seo-head">
