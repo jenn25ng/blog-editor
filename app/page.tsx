@@ -19,6 +19,14 @@ const TONE_OPTIONS: { value: ToneKey; label: string }[] = [
   { value: "casual", label: "친근한 구어체" },
 ];
 
+// 톤별 권장 글자 수(공백 제외). 리뷰는 정보량, 여행 에세이는 서사 분량이 더
+// 필요하고, 구어체는 짧아도 체류시간 확보가 가능하다.
+const CHAR_TARGET: Record<ToneKey, number> = {
+  review: 1000,
+  travel: 1200,
+  casual: 600,
+};
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -93,6 +101,7 @@ function analyzeSeo(
   text: string,
   keyword: string,
   related: string,
+  tone: ToneKey,
 ): SeoMetric[] {
   const metrics: SeoMetric[] = [];
   const body = text.trim();
@@ -131,13 +140,17 @@ function analyzeSeo(
     });
   }
 
-  // 글자 수 (공백 제외)
+  // 글자 수 (공백 제외) — 톤별 목표치 적용
   const noSpace = body.replace(/\s/g, "").length;
+  const target = CHAR_TARGET[tone];
   metrics.push({
     label: "글자 수(공백 제외)",
-    value: `${noSpace}자`,
-    status: noSpace >= 800 ? "ok" : "warn",
-    hint: noSpace >= 800 ? "충분" : "800자↑면 체류시간에 유리",
+    value: `${noSpace} / ${target}자`,
+    status: noSpace >= target ? "ok" : "warn",
+    hint:
+      noSpace >= target
+        ? "목표 충족"
+        : `${target}자↑ 권장 (체류시간)`,
   });
 
   // 핵심 키워드 반복
@@ -224,8 +237,8 @@ export default function Home() {
 
   const parsed = useMemo(() => splitPostAndCandidates(result), [result]);
   const seo = useMemo(
-    () => analyzeSeo(parsed.post, keyword, relatedKeywords),
-    [parsed.post, keyword, relatedKeywords],
+    () => analyzeSeo(parsed.post, keyword, relatedKeywords, tone),
+    [parsed.post, keyword, relatedKeywords, tone],
   );
 
   // 후보 제목을 현재 제목과 맞바꾼다. 기존 제목은 후보 목록으로 되돌려 둔다.
