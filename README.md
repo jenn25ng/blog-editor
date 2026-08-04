@@ -43,7 +43,7 @@
 ## 기술 스택
 
 - [Next.js](https://nextjs.org/) (App Router) + React + TypeScript
-- [Anthropic Claude API](https://docs.claude.com/) — 모델: `claude-opus-5` (Vision)
+- [Anthropic Claude API](https://docs.claude.com/) — 모델: `claude-sonnet-5` (Vision)
 
 ## 시작하기
 
