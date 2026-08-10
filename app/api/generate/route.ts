@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 // 사진 여러 장을 분석하고 긴 글을 스트리밍하므로 넉넉한 실행 시간을 준다.
 export const maxDuration = 300;
 
-const MODEL = "claude-opus-5";
+const MODEL = "claude-sonnet-5";
 const MAX_IMAGES = 8;
 
 type ToneKey = "review" | "travel" | "casual";
