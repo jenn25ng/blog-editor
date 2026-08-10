@@ -11,7 +11,10 @@ interface Photo {
 }
 
 const MAX_IMAGES = 8;
-const MAX_FILE_MB = 8;
+const MAX_ORIGINAL_MB = 50; // 처리(변환·축소) 전 원본 상한 — 극단적으로 큰 파일만 차단
+const MAX_EDGE = 2000; // 긴 변 최대 px (자동 축소)
+const JPEG_QUALITY = 0.85;
+const IMAGE_EXT = /\.(heic|heif|jpe?g|png|gif|webp)$/i;
 
 const TONE_OPTIONS: { value: ToneKey; label: string }[] = [
   { value: "review", label: "정보 / 리뷰 위주" },
@@ -27,13 +30,53 @@ const CHAR_TARGET: Record<ToneKey, number> = {
   casual: 600,
 };
 
-function fileToDataUrl(file: File): Promise<string> {
+function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("이미지를 불러오지 못했습니다."));
+    img.src = src;
   });
+}
+
+// 사진 1장을 (1) HEIC면 JPEG로 변환하고 (2) 긴 변을 MAX_EDGE 이하로 축소해
+// JPEG data URL로 만든다. 아이폰 HEIC·대용량 사진을 그대로 올려도 처리된다.
+async function processImageFile(file: File): Promise<string> {
+  const isHeic =
+    /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
+
+  let blob: Blob = file;
+  if (isHeic) {
+    // heic2any는 브라우저 전용(웹워커/wasm)이라 사용 시점에만 동적 로드
+    const heic2any = (await import("heic2any")).default as (opts: {
+      blob: Blob;
+      toType?: string;
+      quality?: number;
+    }) => Promise<Blob | Blob[]>;
+    const converted = await heic2any({
+      blob: file,
+      toType: "image/jpeg",
+      quality: JPEG_QUALITY,
+    });
+    blob = Array.isArray(converted) ? converted[0] : converted;
+  }
+
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await loadImage(url);
+    const scale = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("이미지 처리를 지원하지 않는 브라우저입니다.");
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 type SeoStatus = "ok" | "warn" | "info";
@@ -230,6 +273,7 @@ export default function Home() {
   const [showTips, setShowTips] = useState(false);
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -259,25 +303,35 @@ export default function Home() {
   const addFiles = useCallback(
     async (files: FileList | File[]) => {
       setError("");
-      const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
+      // HEIC는 type이 비어 오는 경우가 있어 확장자로도 이미지 여부를 판단
+      const list = Array.from(files).filter(
+        (f) => f.type.startsWith("image/") || IMAGE_EXT.test(f.name),
+      );
+      if (list.length === 0) return;
+
+      setProcessing(true);
       const next: Photo[] = [];
       for (const file of list) {
-        if (file.size > MAX_FILE_MB * 1024 * 1024) {
-          setError(`"${file.name}" 파일이 ${MAX_FILE_MB}MB를 초과해 제외했습니다.`);
+        if (file.size > MAX_ORIGINAL_MB * 1024 * 1024) {
+          setError(`"${file.name}" 파일이 너무 큽니다(${MAX_ORIGINAL_MB}MB 초과).`);
           continue;
         }
         try {
-          const dataUrl = await fileToDataUrl(file);
+          // HEIC 자동 변환 + 큰 사진 자동 축소 → JPEG data URL
+          const dataUrl = await processImageFile(file);
           next.push({
             id: `${file.name}-${file.size}-${crypto.randomUUID()}`,
             dataUrl,
             name: file.name,
           });
-        } catch {
-          setError(`"${file.name}" 파일을 읽지 못했습니다.`);
+        } catch (e) {
+          setError(
+            `"${file.name}" 처리 실패: ${e instanceof Error ? e.message : "알 수 없는 오류"}`,
+          );
         }
       }
       setPhotos((prev) => [...prev, ...next].slice(0, MAX_IMAGES));
+      setProcessing(false);
     },
     [],
   );
@@ -413,12 +467,14 @@ export default function Home() {
               onDragLeave={() => setDragging(false)}
               onDrop={onDrop}
             >
-              사진을 끌어다 놓거나 클릭해서 선택하세요
+              {processing
+                ? "사진 처리 중… (변환·축소)"
+                : "사진을 끌어다 놓거나 클릭해서 선택하세요"}
             </div>
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               multiple
               hidden
               onChange={(e) => {
@@ -426,7 +482,9 @@ export default function Home() {
                 e.target.value = "";
               }}
             />
-            <p className="hint">JPG · PNG · WebP · GIF, 장당 최대 {MAX_FILE_MB}MB</p>
+            <p className="hint">
+              아이폰(HEIC) 자동 변환 · 큰 사진 자동 축소 · 최대 {MAX_IMAGES}장
+            </p>
 
             {photos.length > 0 && (
               <div className="thumbs">
@@ -471,8 +529,16 @@ export default function Home() {
             />
           </label>
 
-          <button className="primary" onClick={generate} disabled={loading}>
-            {loading ? "작성 중…" : "블로그 글 작성하기"}
+          <button
+            className="primary"
+            onClick={generate}
+            disabled={loading || processing}
+          >
+            {loading
+              ? "작성 중…"
+              : processing
+                ? "사진 처리 중…"
+                : "블로그 글 작성하기"}
           </button>
 
           {error && <p className="error">{error}</p>}
